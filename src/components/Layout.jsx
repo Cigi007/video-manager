@@ -27,7 +27,7 @@ import {
 const drawerWidth = 240;
 
 const menuItems = [
-  { text: 'Dashboard', icon: <DashboardIcon />, path: '/' },
+  { text: 'Dashboard', icon: <DashboardIcon />, path: '/dashboard' },
   { text: 'Videa', icon: <VideoIcon />, path: '/videos' },
   { text: 'Stránky', icon: <PagesIcon />, path: '/pages' },
   { text: 'Přizpůsobení', icon: <TuneIcon />, path: '/customization' },

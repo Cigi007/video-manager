@@ -241,7 +241,7 @@ function Customization() {
                 sx={{ mb: 2 }}
               >
                 <ToggleButton value="fullscreen">Full Screen</ToggleButton>
-                <ToggleButton value="overlay" selected>Overlay</ToggleButton>
+                <ToggleButton value="overlay">Overlay</ToggleButton>
               </ToggleButtonGroup>
             </Box>
             <Box sx={{ mb: 2 }}>
@@ -252,7 +252,7 @@ function Customization() {
                 sx={{ mb: 2 }}
               >
                 <ToggleButton value="all">All Videos</ToggleButton>
-                <ToggleButton value="connected" selected>Connected Videos</ToggleButton>
+                <ToggleButton value="connected">Connected Videos</ToggleButton>
               </ToggleButtonGroup>
             </Box>
             <Box sx={{ mb: 2 }}>
@@ -267,8 +267,8 @@ function Customization() {
             <Box sx={{ mb: 2 }}>
               <Typography sx={{ mb: 1 }}>Display Gander Branding</Typography>
               <ToggleButtonGroup value={''} exclusive sx={{ mb: 2 }}>
-                <ToggleButton value="show" disabled>Show</ToggleButton>
-                <ToggleButton value="hide" disabled>Hide</ToggleButton>
+                <ToggleButton value="show">Show</ToggleButton>
+                <ToggleButton value="hide">Hide</ToggleButton>
               </ToggleButtonGroup>
             </Box>
           </AccordionDetails>

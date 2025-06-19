@@ -1,99 +1,46 @@
-import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import {
-  Box,
-  Button,
-  Container,
-  TextField,
-  Typography,
-  Paper,
-} from '@mui/material';
-import { useAuth } from '../hooks/useAuth';
+import { Box, Button, Typography, Paper } from '@mui/material';
+import { useAuth0 } from '@auth0/auth0-react';
 
 function Login() {
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [error, setError] = useState('');
-  const { login } = useAuth();
-  const navigate = useNavigate();
-
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    setError('');
-
-    const success = await login(email, password);
-    if (success) {
-      navigate('/');
-    } else {
-      setError('Nesprávné přihlašovací údaje');
-    }
-  };
+  const { loginWithRedirect } = useAuth0();
 
   return (
-    <Container component="main" maxWidth="xs">
-      <Box
+    <Box
+      sx={{
+        minHeight: '100vh',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        bgcolor: '#f5f5f5',
+      }}
+    >
+      <Paper
+        elevation={3}
         sx={{
-          marginTop: 8,
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
+          p: 4,
+          width: '100%',
+          maxWidth: 400,
+          textAlign: 'center',
+          borderRadius: 2,
         }}
       >
-        <Paper
-          elevation={3}
-          sx={{
-            padding: 4,
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
-            width: '100%',
-          }}
+        <Typography variant="h4" component="h1" gutterBottom fontWeight={600}>
+          Welcome Back
+        </Typography>
+        <Typography variant="body1" color="text.secondary" sx={{ mb: 4 }}>
+          Please sign in to continue
+        </Typography>
+        <Button
+          variant="contained"
+          size="large"
+          fullWidth
+          onClick={() => loginWithRedirect()}
+          sx={{ py: 1.5 }}
         >
-          <Typography component="h1" variant="h5">
-            Přihlášení
-          </Typography>
-          <Box component="form" onSubmit={handleSubmit} sx={{ mt: 1 }}>
-            <TextField
-              margin="normal"
-              required
-              fullWidth
-              id="email"
-              label="Email"
-              name="email"
-              autoComplete="email"
-              autoFocus
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-            />
-            <TextField
-              margin="normal"
-              required
-              fullWidth
-              name="password"
-              label="Heslo"
-              type="password"
-              id="password"
-              autoComplete="current-password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-            />
-            {error && (
-              <Typography color="error" sx={{ mt: 2 }}>
-                {error}
-              </Typography>
-            )}
-            <Button
-              type="submit"
-              fullWidth
-              variant="contained"
-              sx={{ mt: 3, mb: 2 }}
-            >
-              Přihlásit se
-            </Button>
-          </Box>
-        </Paper>
-      </Box>
-    </Container>
+          Sign In
+        </Button>
+      </Paper>
+    </Box>
   );
 }
 

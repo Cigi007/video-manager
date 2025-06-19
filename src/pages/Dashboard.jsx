@@ -27,6 +27,7 @@ import {
   Warning as WarningIcon,
   ArrowUpward,
   ArrowDownward,
+  Search as SearchIcon,
 } from '@mui/icons-material';
 import { DatePicker } from '@mui/x-date-pickers/DatePicker';
 import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs';
@@ -40,8 +41,8 @@ function StatCard({ title, value, icon, color }) {
       <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
         <Box
           sx={{
-            backgroundColor: `${color}.light`,
-            borderRadius: '50%',
+            // backgroundColor: `${color}.light`,
+            // borderRadius: '50%',
             p: 1,
             mr: 2,
           }}
@@ -92,91 +93,9 @@ function Trend({ value }) {
 }
 
 function Dashboard() {
-  const stats = [
-    {
-      title: 'Celkem videí',
-      value: '12',
-      icon: <VideoIcon sx={{ color: 'primary.main' }} />,
-      color: 'primary',
-    },
-    {
-      title: 'Vyčerpáno úložiště',
-      value: '45%',
-      icon: <StorageIcon sx={{ color: 'warning.main' }} />,
-      color: 'warning',
-    },
-    {
-      title: 'Zobrazení',
-      value: '1,234',
-      icon: <ViewIcon sx={{ color: 'success.main' }} />,
-      color: 'success',
-    },
-    {
-      title: 'Růst',
-      value: '+15%',
-      icon: <TrendingIcon sx={{ color: 'info.main' }} />,
-      color: 'info',
-    },
-  ];
-
-  const activities = [
-    {
-      icon: <VideoIcon />,
-      title: 'Nahráno nové video "Produktové video.mp4"',
-      time: 'Před 2 hodinami',
-      color: 'primary',
-    },
-    {
-      icon: <WarningIcon />,
-      title: 'Varování: Úložiště je téměř plné',
-      time: 'Před 5 hodinami',
-      color: 'warning',
-    },
-    {
-      icon: <ViewIcon />,
-      title: 'Video "Úvodní video.mp4" dosáhlo 100 zobrazení',
-      time: 'Před 1 dnem',
-      color: 'success',
-    },
-  ];
-
   // Výchozí časový rámec
   const [dateFrom, setDateFrom] = useState(dayjs().subtract(7, 'day'));
   const [dateTo, setDateTo] = useState(dayjs());
-
-  // Ukázková data pro videa
-  const videoMetrics = [
-    {
-      id: 1,
-      name: 'Úvodní video.mp4',
-      views: 1200,
-      viewsPrev: 1000,
-      clicks: 150,
-      clicksPrev: 120,
-      purchases: 12,
-      purchasesPrev: 10,
-    },
-    {
-      id: 2,
-      name: 'Produktové video.mp4',
-      views: 950,
-      viewsPrev: 1100,
-      clicks: 110,
-      clicksPrev: 130,
-      purchases: 8,
-      purchasesPrev: 9,
-    },
-    {
-      id: 3,
-      name: 'Promo video.mov',
-      views: 600,
-      viewsPrev: 500,
-      clicks: 80,
-      clicksPrev: 60,
-      purchases: 5,
-      purchasesPrev: 4,
-    },
-  ];
 
   // Výpočet trendu v %
   const getTrend = (current, prev) => {
@@ -191,11 +110,39 @@ function Dashboard() {
       </Typography>
 
       <Grid container spacing={3}>
-        {stats.map((stat, index) => (
-          <Grid item xs={12} sm={6} md={3} key={index}>
-            <StatCard {...stat} />
-          </Grid>
-        ))}
+        {/* Metriky (budou načteny z backendu) */}
+        <Grid item xs={12} sm={6} md={3}>
+          <StatCard
+            title="Celkem videí"
+            value="--"
+            icon={<VideoIcon sx={{ color: 'primary.main' }} />}
+            color="primary"
+          />
+        </Grid>
+        <Grid item xs={12} sm={6} md={3}>
+          <StatCard
+            title="Využito úložiště"
+            value="--"
+            icon={<StorageIcon sx={{ color: 'warning.main' }} />}
+            color="warning"
+          />
+        </Grid>
+        <Grid item xs={12} sm={6} md={3}>
+          <StatCard
+            title="Celkem zobrazení"
+            value="--"
+            icon={<ViewIcon sx={{ color: 'success.main' }} />}
+            color="success"
+          />
+        </Grid>
+        <Grid item xs={12} sm={6} md={3}>
+          <StatCard
+            title="Růst prokliků"
+            value="--"
+            icon={<TrendingIcon sx={{ color: 'info.main' }} />}
+            color="info"
+          />
+        </Grid>
 
         <Grid item xs={12} md={8}>
           <Paper sx={{ p: 2 }}>
@@ -204,30 +151,14 @@ function Dashboard() {
             </Typography>
             <Box sx={{ mb: 1 }}>
               <Typography variant="body2" color="text.secondary">
-                4.5 GB z 10 GB
+                -- GB z -- GB
               </Typography>
             </Box>
             <LinearProgress
               variant="determinate"
-              value={45}
+              value={0}
               sx={{ height: 10, borderRadius: 5 }}
             />
-          </Paper>
-        </Grid>
-
-        <Grid item xs={12} md={4}>
-          <Paper sx={{ p: 2 }}>
-            <Typography variant="h6" gutterBottom>
-              Poslední aktivity
-            </Typography>
-            <List>
-              {activities.map((activity, index) => (
-                <Box key={index}>
-                  <ActivityItem {...activity} />
-                  {index < activities.length - 1 && <Divider />}
-                </Box>
-              ))}
-            </List>
           </Paper>
         </Grid>
 
@@ -256,39 +187,39 @@ function Dashboard() {
                     slotProps={{ textField: { size: 'small' } }}
                   />
                 </Grid>
+                <Grid item xs>
+                  <TextField
+                    label="Hledat video"
+                    variant="outlined"
+                    fullWidth
+                    size="small"
+                    InputProps={{
+                      startAdornment: (
+                        <InputAdornment position="start">
+                          <SearchIcon />
+                        </InputAdornment>
+                      ),
+                    }}
+                  />
+                </Grid>
               </Grid>
             </LocalizationProvider>
             <TableContainer>
-              <Table>
+              <Table size="small">
                 <TableHead>
                   <TableRow>
-                    <TableCell>Název videa</TableCell>
+                    <TableCell>Název Videa</TableCell>
                     <TableCell align="right">Zobrazení</TableCell>
-                    <TableCell align="right">Trend</TableCell>
                     <TableCell align="right">Prokliky</TableCell>
-                    <TableCell align="right">Trend</TableCell>
                     <TableCell align="right">Nákupy</TableCell>
-                    <TableCell align="right">Trend</TableCell>
                   </TableRow>
                 </TableHead>
                 <TableBody>
-                  {videoMetrics.map((video) => (
-                    <TableRow key={video.id}>
-                      <TableCell>{video.name}</TableCell>
-                      <TableCell align="right">{video.views}</TableCell>
-                      <TableCell align="right">
-                        <Trend value={getTrend(video.views, video.viewsPrev)} />
-                      </TableCell>
-                      <TableCell align="right">{video.clicks}</TableCell>
-                      <TableCell align="right">
-                        <Trend value={getTrend(video.clicks, video.clicksPrev)} />
-                      </TableCell>
-                      <TableCell align="right">{video.purchases}</TableCell>
-                      <TableCell align="right">
-                        <Trend value={getTrend(video.purchases, video.purchasesPrev)} />
-                      </TableCell>
-                    </TableRow>
-                  ))}
+                  <TableRow>
+                    <TableCell colSpan={4} sx={{ textAlign: 'center', py: 3 }}>
+                      Žádná data k zobrazení.
+                    </TableCell>
+                  </TableRow>
                 </TableBody>
               </Table>
             </TableContainer>

@@ -26,3 +26,19 @@ a {
 button {
   font-family: inherit;
 }
+
+/* Custom styles to fix Ant Design icon appearance in Dashboard */
+.ant-statistic-content-prefix .anticon {
+  background-color: transparent !important;
+  border-radius: 0 !important;
+  padding: 0 !important; /* Ensure no padding adds to the perceived size of the circle */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.ant-statistic-content-prefix {
+  background-color: transparent !important;
+  border-radius: 0 !important;
+  padding: 0 !important;
+}

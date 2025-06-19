@@ -1,4 +1,4 @@
-import { useState, useContext } from 'react';
+import { useState, useContext, useEffect, useCallback } from 'react';
 import { useDropzone } from 'react-dropzone';
 import {
   Box,
@@ -35,56 +35,11 @@ import {
   ArrowDropDown as ArrowDropDownIcon,
   Close as CloseIcon,
   Check as CheckIcon,
+  PlayCircleOutline as PlayCircleOutlineIcon,
 } from '@mui/icons-material';
-import { mockPages } from '../mockData';
+import CloudUploadIcon from '@mui/icons-material/CloudUpload';
 import { AppDataContext } from '../App';
-
-const mockVideos = [
-  {
-    id: 1,
-    name: 'Vítací videoo',
-    duration: '00:51',
-    size: '148.55 MB',
-    pages: 1,
-    pageNames: ['Homepage'],
-    uploaded: '09 Jun 2025',
-    uploadedTime: '07:50 PM',
-    source: 'Uploaded Content',
-    thumbnail: 'https://randomuser.me/api/portraits/women/44.jpg',
-    videoUrl: 'https://randomuser.me/api/portraits/women/44.jpg',
-    connectedPages: [
-      { name: 'Home Page', url: 'http://www.brunoshop.cz/' },
-    ],
-  },
-  {
-    id: 2,
-    name: 'Produktové video',
-    duration: '01:23',
-    size: '98.12 MB',
-    pages: 0,
-    pageNames: [],
-    uploaded: '10 Jun 2025',
-    uploadedTime: '10:15 AM',
-    source: 'Uploaded Content',
-    thumbnail: 'https://randomuser.me/api/portraits/men/32.jpg',
-    videoUrl: 'https://randomuser.me/api/portraits/men/32.jpg',
-    connectedPages: [],
-  },
-  {
-    id: 3,
-    name: 'Ukázkové video',
-    duration: '02:05',
-    size: '210.00 MB',
-    pages: 2,
-    pageNames: ['Homepage', 'Produkt'],
-    uploaded: '11 Jun 2025',
-    uploadedTime: '14:30 PM',
-    source: 'Uploaded Content',
-    thumbnail: 'https://randomuser.me/api/portraits/men/45.jpg',
-    videoUrl: 'https://randomuser.me/api/portraits/men/45.jpg',
-    connectedPages: [],
-  },
-];
+import { useAuth0 } from '@auth0/auth0-react';
 
 function normalizeUrl(url) {
   return url
@@ -92,6 +47,40 @@ function normalizeUrl(url) {
     .replace(/^www\./, '')
     .replace(/\/$/, '')
     .toLowerCase();
+}
+
+function formatDuration(seconds) {
+  if (!seconds) return 'Neznámá délka';
+  const minutes = Math.floor(seconds / 60);
+  const remainingSeconds = seconds % 60;
+  return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`;
+}
+
+function formatFileSize(bytes) {
+  if (bytes === 0) return '0 B';
+  const k = 1024;
+  const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+}
+
+function formatDateOnly(dateString) {
+  if (!dateString) return '';
+  const date = new Date(dateString);
+  return date.toLocaleDateString('cs-CZ', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+  });
+}
+
+function formatTimeOnly(dateString) {
+  if (!dateString) return '';
+  const date = new Date(dateString);
+  return date.toLocaleTimeString('cs-CZ', {
+    hour: '2-digit',
+    minute: '2-digit',
+  });
 }
 
 function Videos() {
@@ -111,76 +100,169 @@ function Videos() {
   const [editingVideoName, setEditingVideoName] = useState('');
   const [editVideoError, setEditVideoError] = useState('');
   const [createPageError, setCreatePageError] = useState('');
+  const [uploadError, setUploadError] = useState('');
+  const { getAccessTokenSilently } = useAuth0();
+  const { isAuthenticated, user, getAccessTokenSilently: auth0GetAccessTokenSilently } = useAuth0();
+  const { setAlert } = useContext(AppDataContext);
 
-  const onDrop = async (acceptedFiles) => {
-    setUploading(true);
+  const [linkingMethod, setLinkingMethod] = useState('existing');
+  const [newPageName, setNewPageName] = useState('');
+  const [newPageUrl, setNewPageUrl] = useState('');
+
+  const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
+  const MAX_FILE_SIZE = 100 * 1024 * 1024; // 100 MB
+  const SUPPORTED_VIDEO_TYPES = ['video/mp4', 'video/webm', 'video/ogg'];
+
+  const fetchVideos = useCallback(async () => {
+    if (!isAuthenticated) return;
     try {
-      // Simulace nahrávání
-      await new Promise(resolve => setTimeout(resolve, 1500));
-      
-      const newVideos = acceptedFiles.map((file, index) => ({
-        id: videos.length + index + 1,
-        name: file.name,
-        size: `${(file.size / (1024 * 1024)).toFixed(1)} MB`,
-        createdAt: new Date().toISOString(),
-      }));
-
-      setVideos([...videos, ...newVideos]);
+      const token = await getAccessTokenSilently();
+      const response = await fetch(`${API_URL}/api/videos`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      const data = await response.json();
+      setVideos(data);
     } catch (error) {
-      console.error('Upload error:', error);
+      console.error("Error fetching videos:", error);
+      setAlert({ message: `Chyba při načítání videí: ${error.message}`, type: "error" });
+    }
+  }, [isAuthenticated, getAccessTokenSilently, setAlert, API_URL]);
+
+  useEffect(() => {
+    fetchVideos();
+  }, [fetchVideos]);
+
+  const onDrop = useCallback(async (acceptedFiles, fileRejections) => {
+    if (!isAuthenticated) {
+      setAlert({ message: "Pro nahrávání videí musíte být přihlášeni.", type: "warning" });
+      return;
+    }
+
+    if (fileRejections.length > 0) {
+      fileRejections.forEach((fileRejection) => {
+        fileRejection.errors.forEach((error) => {
+          if (error.code === 'file-too-large') {
+            setUploadError(`Soubor ${fileRejection.file.name} je příliš velký. Maximální velikost je ${formatFileSize(MAX_FILE_SIZE)}.`);
+          } else if (error.code === 'file-invalid-type') {
+            setUploadError(`Soubor ${fileRejection.file.name} má nepodporovaný formát. Podporované formáty: ${SUPPORTED_VIDEO_TYPES.map(type => type.split('/')[1]).join(', ')}.`);
+          } else {
+            setUploadError(`Chyba při nahrávání souboru ${fileRejection.file.name}: ${error.message}`);
+          }
+        });
+      });
+      return;
+    }
+
+    if (acceptedFiles.length === 0) return;
+
+    setUploading(true);
+    setUploadError(''); // Clear previous errors
+    const formData = new FormData();
+    acceptedFiles.forEach(file => {
+      formData.append("videos", file);
+    });
+
+    try {
+      const token = await getAccessTokenSilently();
+      const response = await fetch(`${API_URL}/api/videos`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+        body: formData,
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      setAlert({ message: "Videa byla úspěšně nahrána!", type: "success" });
+      fetchVideos(); // Refresh the list of videos
+    } catch (error) {
+      console.error("Error uploading videos:", error);
+      setAlert({ message: `Chyba při nahrávání videí: ${error.message}`, type: "error" });
     } finally {
       setUploading(false);
     }
-  };
+  }, [isAuthenticated, getAccessTokenSilently, setAlert, fetchVideos, API_URL]);
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
-    accept: {
-      'video/mp4': ['.mp4'],
-      'video/quicktime': ['.mov'],
-    },
+    accept: SUPPORTED_VIDEO_TYPES.reduce((acc, type) => ({ ...acc, [type]: [] }), {}),
+    maxSize: MAX_FILE_SIZE,
   });
 
-  const handleEdit = (video) => {
-    setEditingVideoId(video.id);
-    setEditingVideoName(video.name);
-    setEditVideoError('');
+  const handleEditClick = (video) => {
+    setEditDialog({ open: true, video });
+    setNewName(video.title);
   };
 
-  const handleEditCancel = () => {
-    setEditingVideoId(null);
-    setEditingVideoName('');
-    setEditVideoError('');
-  };
-
-  const handleEditSave = (video) => {
-    const trimmed = editingVideoName.trim();
-    if (!trimmed) {
-      setEditVideoError('Název nesmí být prázdný.');
+  const handleEditSave = async () => {
+    if (!editDialog.video || !newName.trim()) {
+      setAlert({ message: "Název nemůže být prázdný.", type: "error" });
       return;
     }
-    if (videos.some(v => v.id !== video.id && v.name.trim().toLowerCase() === trimmed.toLowerCase())) {
-      setEditVideoError('Video s tímto názvem už existuje.');
-      return;
+    try {
+      const token = await getAccessTokenSilently();
+      const response = await fetch(`${API_URL}/api/videos/${editDialog.video.id}`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ title: newName }),
+      });
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      setAlert({ message: "Název videa byl úspěšně aktualizován.", type: "success" });
+      setEditDialog({ open: false, video: null });
+      fetchVideos(); // Refresh the list
+    } catch (error) {
+      console.error("Error updating video:", error);
+      setAlert({ message: `Chyba při aktualizaci videa: ${error.message}`, type: "error" });
     }
-    setVideos(videos.map(v => v.id === video.id ? { ...v, name: trimmed } : v));
-    setEditingVideoId(null);
-    setEditingVideoName('');
-    setEditVideoError('');
   };
 
-  const handleDelete = (id) => {
-    setVideos(videos.filter((v) => v.id !== id));
+  const handleDeleteClick = async (id) => {
+    if (!window.confirm("Opravdu chcete toto video smazat?")) return;
+    try {
+      const token = await getAccessTokenSilently();
+      const response = await fetch(`${API_URL}/api/videos/${id}`, {
+        method: "DELETE",
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      setAlert({ message: "Video bylo úspěšně smazáno.", type: "success" });
+      fetchVideos(); // Refresh the list
+    } catch (error) {
+      console.error("Error deleting video:", error);
+      setAlert({ message: `Chyba při mazání videa: ${error.message}`, type: "error" });
+    }
   };
 
   const handleOpenDrawer = (video) => {
+    console.log('Frontend - handleOpenDrawer received video:', video);
     setSelectedVideo(video);
     setDrawerOpen(true);
     setDrawerTab(0);
     setLocalPages([...pages]);
-    setPendingConnectedPages(video.connectedPages || []);
+    setPendingConnectedPages(video.Pages || []);
     setPageUrl('');
+    setNewPageName('');
+    setNewPageUrl('');
     setPageSearchResults([]);
+    setCreatePageError('');
+    setLinkingMethod('existing');
   };
 
   const handleCloseDrawer = () => {
@@ -188,278 +270,393 @@ function Videos() {
     setSelectedVideo(null);
   };
 
-  const handlePageUrlChange = (e) => {
+  const handleRemovePendingPage = (pageIdToRemove) => {
+    setPendingConnectedPages(pendingConnectedPages.filter(page => page.id !== pageIdToRemove));
+  };
+
+  const handlePageSearchChange = (e) => {
     const value = e.target.value;
     setPageUrl(value);
-    setCreatePageError('');
     if (!value) {
       setPageSearchResults([]);
       return;
     }
     const normValue = normalizeUrl(value);
     let results = localPages.filter(page =>
-      normalizeUrl(page.url).includes(normValue) ||
-      page.name.toLowerCase().includes(value.toLowerCase())
+      normalizeUrl(page.url).includes(normValue) || page.name.toLowerCase().includes(value.toLowerCase())
     );
-    results = results.filter((page, idx, arr) => arr.findIndex(p => p.id === page.id) === idx);
     setPageSearchResults(results);
   };
 
-  const handleCreatePage = () => {
-    const trimmed = pageUrl.trim();
-    if (!trimmed) {
-      setCreatePageError('URL nesmí být prázdná.');
+  const handleCreatePage = async () => {
+    if (!newPageName.trim() || !newPageUrl.trim()) {
+      setCreatePageError('Název i URL stránky nemůže být prázdná.');
       return;
     }
-    if (localPages.some(page => normalizeUrl(page.url) === normalizeUrl(trimmed))) {
-      setCreatePageError('Stránka s touto URL už existuje.');
+    const normalizedUrl = normalizeUrl(newPageUrl);
+    if (localPages.some(p => normalizeUrl(p.url) === normalizedUrl)) {
+      setCreatePageError('Stránka s touto URL již existuje.');
       return;
     }
-    const newPage = {
-      id: localPages.length + 1,
-      name: trimmed,
-      url: trimmed,
-      videos: [],
-      abTesting: 'Inactive',
-    };
-    setLocalPages([...localPages, newPage]);
-    setPendingConnectedPages([...pendingConnectedPages, { name: trimmed, url: trimmed.startsWith('http') ? trimmed : 'http://' + trimmed }]);
-    setPageUrl('');
-    setPageSearchResults([]);
-    setCreatePageError('');
+
+    try {
+      const token = await getAccessTokenSilently();
+      const response = await fetch(`${API_URL}/api/pages`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ name: newPageName, url: newPageUrl }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      const newPage = await response.json();
+      setLocalPages([...localPages, newPage]);
+      setPendingConnectedPages([...pendingConnectedPages, newPage]);
+      setNewPageUrl('');
+      setNewPageName('');
+      setCreatePageError('');
+      setAlert({ message: 'Stránka byla úspěšně vytvořena a přidána k propojení!', type: 'success' });
+      setLinkingMethod('existing');
+    } catch (error) {
+      console.error('Error creating page:', error);
+      setCreatePageError(`Chyba při vytváření stránky: ${error.message}`);
+      setAlert({ message: `Chyba při vytváření stránky: ${error.message}`, type: 'error' });
+    }
   };
 
   const handleSelectPage = (page) => {
-    setPendingConnectedPages([...pendingConnectedPages, { name: page.name, url: page.url.startsWith('http') ? page.url : 'http://' + page.url }]);
+    if (!pendingConnectedPages.some(p => p.id === page.id)) {
+      setPendingConnectedPages([...pendingConnectedPages, page]);
+    }
     setPageUrl('');
     setPageSearchResults([]);
   };
 
-  const handleSave = () => {
-    // Uložit nové stránky do AppDataContext
-    setPages(localPages);
-    // Uložit propojení do videa (mock logika, pouze lokálně)
-    setVideos(videos => videos.map(v => v.id === selectedVideo.id ? { ...v, connectedPages: pendingConnectedPages } : v));
-    setDrawerOpen(false);
-    setSelectedVideo(null);
+  const handleSave = async () => {
+    if (!selectedVideo) return;
+    
+    try {
+      const token = await getAccessTokenSilently();
+      const response = await fetch(`${API_URL}/api/videos/${selectedVideo.id}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          title: selectedVideo.title,
+          connectedPageIds: pendingConnectedPages.map(page => page.id) || []
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const updatedVideo = await response.json();
+      setVideos(videos.map(v => v.id === updatedVideo.id ? updatedVideo : v));
+      setAlert({ message: 'Video bylo úspěšně aktualizováno.', type: 'success' });
+      handleCloseDrawer();
+    } catch (error) {
+      console.error('Error saving video:', error);
+      setAlert({ message: `Chyba při ukládání videa: ${error.message}`, type: 'error' });
+    }
   };
 
+  const filteredVideos = videos.filter(video =>
+    video.title.toLowerCase().includes(search.toLowerCase())
+  );
+
   return (
-    <Box>
-      <Typography variant="h4" gutterBottom>
-        Manage Videos
-      </Typography>
-      <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 2 }}>
+    <Box sx={{ p: 3 }}>
+      <Typography variant="h4" component="h1" gutterBottom>Správa Videí</Typography>
+      <Box sx={{ mb: 3, display: 'flex', alignItems: 'center', gap: 2 }}>
         <TextField
-          placeholder="Search"
-          size="small"
+          label="Hledat videa"
+          variant="outlined"
+          fullWidth
           value={search}
-          onChange={e => setSearch(e.target.value)}
+          onChange={(e) => setSearch(e.target.value)}
           InputProps={{
             startAdornment: (
               <InputAdornment position="start">
                 <SearchIcon />
               </InputAdornment>
             ),
-            sx: { borderRadius: 2, bgcolor: '#fafbfc' },
           }}
-          sx={{ width: 260 }}
         />
       </Box>
-      <Paper sx={{ borderRadius: 3, p: 2 }}>
+      <Paper
+        elevation={2}
+        {...getRootProps()}
+        sx={{
+          mb: 3,
+          p: 3,
+          border: '2px dashed',
+          borderColor: isDragActive ? 'primary.main' : 'grey.400',
+          backgroundColor: isDragActive ? 'grey.100' : 'transparent',
+          textAlign: 'center',
+          cursor: 'pointer',
+          transition: 'border-color .2s ease-in-out, background-color .2s ease-in-out',
+        }}
+      >
+        <input {...getInputProps()} />
+        {uploading ? (
+          <CircularProgress />
+        ) : (
+          <Typography variant="body1" color="text.secondary">
+            {isDragActive ? "Přetáhněte soubory sem..." : "Přetáhněte video soubory sem, nebo klikněte pro výběr souborů"}
+          </Typography>
+        )}
+        <Button
+          variant="contained"
+          startIcon={<CloudUploadIcon />}
+          sx={{ mt: 2 }}
+          onClick={(e) => { e.stopPropagation(); /* Prevents dropzone from activating again */ }}
+        >
+          Vybrat soubory k nahrání
+        </Button>
+        {uploadError && (
+          <Typography color="error" sx={{ mt: 2 }}>
+            {uploadError}
+          </Typography>
+        )}
+        <Typography variant="caption" color="text.secondary" display="block" sx={{ mt: 1 }}>
+          Podporované formáty: {SUPPORTED_VIDEO_TYPES.map(type => type.split('/')[1]).join(', ')}. Maximální velikost: {formatFileSize(MAX_FILE_SIZE)}.
+        </Typography>
+      </Paper>
+      
+      <Paper elevation={2} sx={{ mb: 3 }}>
         <TableContainer>
           <Table>
             <TableHead>
-              <TableRow sx={{ background: '#fafbfc' }}>
-                <TableCell sx={{ fontWeight: 700, color: 'text.secondary' }}>Video</TableCell>
-                <TableCell sx={{ fontWeight: 700, color: 'text.secondary' }}>Linked Pages</TableCell>
-                <TableCell sx={{ fontWeight: 700, color: 'text.secondary' }}>Date Uploaded</TableCell>
-                <TableCell sx={{ fontWeight: 700, color: 'text.secondary' }}>Source</TableCell>
-                <TableCell sx={{ fontWeight: 700, color: 'text.secondary' }}>Actions</TableCell>
+              <TableRow>
+                <TableCell>Název Videa</TableCell>
+                <TableCell>Náhled</TableCell>
+                <TableCell>Délka</TableCell>
+                <TableCell>Velikost</TableCell>
+                <TableCell>Datum nahrání</TableCell>
+                <TableCell>Propojené stránky</TableCell>
+                <TableCell align="right">Akce</TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
-              {videos
-                .filter(v => v.name.toLowerCase().includes(search.toLowerCase()))
-                .map((video) => (
-                <TableRow key={video.id} hover sx={{ verticalAlign: 'middle' }}>
+              {filteredVideos.map((video) => (
+                <TableRow key={video.id}>
+                  <TableCell>{video.title}</TableCell>
                   <TableCell>
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-                      <Avatar src={video.thumbnail} variant="rounded" sx={{ width: 56, height: 40, mr: 2 }} />
-                      <Box>
-                        <Typography fontWeight={600}>
-                          {editingVideoId === video.id ? (
-                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                              <Box>
-                                <TextField
-                                  value={editingVideoName}
-                                  onChange={e => { setEditingVideoName(e.target.value); setEditVideoError(''); }}
-                                  size="small"
-                                  error={!!editVideoError}
-                                  helperText={editVideoError}
-                                  onKeyDown={e => {
-                                    if (e.key === 'Enter') handleEditSave(video);
-                                    if (e.key === 'Escape') handleEditCancel();
-                                  }}
-                                  autoFocus
-                                  sx={{ minWidth: 120 }}
-                                />
-                              </Box>
-                              <IconButton color="primary" onClick={() => handleEditSave(video)} disabled={!!editVideoError}><CheckIcon /></IconButton>
-                              <IconButton color="error" onClick={handleEditCancel}><CloseIcon /></IconButton>
-                            </Box>
-                          ) : (
-                            <span>{video.name}</span>
-                          )}
-                        </Typography>
-                        <Typography variant="body2" color="text.secondary">
-                          {video.duration} • {video.size}
-                        </Typography>
+                    {video.thumbnail ? (
+                      <Box
+                        component="img"
+                        src={video.thumbnail}
+                        alt="Video Thumbnail"
+                        sx={{ width: 100, height: 60, objectFit: 'cover', borderRadius: 1 }}
+                      />
+                    ) : (
+                      <PlayCircleOutlineIcon sx={{ width: 100, height: 60, color: 'text.disabled' }} />
+                    )}
+                  </TableCell>
+                  <TableCell>{formatDuration(video.duration)}</TableCell>
+                  <TableCell>{formatFileSize(video.size)}</TableCell>
+                  <TableCell>{formatDateOnly(video.createdAt)} {formatTimeOnly(video.createdAt)}</TableCell>
+                  <TableCell>
+                    {video.Pages && video.Pages.length > 0 ? (
+                      <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
+                        {video.Pages.map((page) => (
+                          <Chip key={page.id} label={page.name} size="small" onDelete={() => { /* handle delete directly from the table if needed */ }} />
+                        ))}
                       </Box>
-                      <IconButton size="small" sx={{ ml: 1 }} onClick={() => handleEdit(video)}>
-                        <EditIcon fontSize="small" />
-                      </IconButton>
-                    </Box>
+                    ) : (
+                      <Typography variant="body2" color="textSecondary">Žádné</Typography>
+                    )}
                   </TableCell>
-                  <TableCell>
-                    <Chip
-                      label={(video.connectedPages ? video.connectedPages.length : 0)}
-                      color="primary"
-                      size="small"
-                      sx={{ fontWeight: 700, mr: 1 }}
-                    />
-                    <Button
-                      size="small"
-                      endIcon={<ArrowDropDownIcon />}
-                      sx={{ textTransform: 'none', color: 'primary.main', fontWeight: 600 }}
-                    >
-                      Pages
-                    </Button>
-                  </TableCell>
-                  <TableCell>
-                    <Typography fontWeight={500}>{video.uploaded}</Typography>
-                    <Typography variant="body2" color="text.secondary">
-                      {video.uploadedTime}
-                    </Typography>
-                  </TableCell>
-                  <TableCell>
-                    <Chip label={video.source} size="small" sx={{ bgcolor: '#f5f5f5', color: 'text.secondary', fontWeight: 500 }} />
-                  </TableCell>
-                  <TableCell>
+                  <TableCell align="right">
+                    <IconButton onClick={() => handleEditClick(video)} color="primary" size="small">
+                      <EditIcon />
+                    </IconButton>
+                    <IconButton onClick={() => handleDeleteClick(video.id)} color="error" size="small">
+                      <DeleteIcon />
+                    </IconButton>
                     <Button
                       variant="outlined"
                       size="small"
-                      sx={{ textTransform: 'none', fontWeight: 600, mr: 1 }}
+                      sx={{ textTransform: 'none', fontWeight: 600, ml: 1 }}
                       onClick={() => handleOpenDrawer(video)}
                     >
-                      Manage Video
+                      Spravovat video
                     </Button>
-                    <IconButton color="error" onClick={() => handleDelete(video.id)}>
-                      <DeleteIcon />
-                    </IconButton>
                   </TableCell>
                 </TableRow>
               ))}
+              {filteredVideos.length === 0 && (
+                <TableRow>
+                  <TableCell colSpan={7} sx={{ textAlign: 'center', py: 3 }}>
+                    Žádná videa nalezena. Nahrajte první video!
+                  </TableCell>
+                </TableRow>
+              )}
             </TableBody>
           </Table>
         </TableContainer>
       </Paper>
 
-      {/* Drawer pro správu videa */}
+      {/* Edit Video Dialog */}
+      <Dialog open={editDialog.open} onClose={() => setEditDialog({ open: false, video: null })}>
+        <DialogTitle>Upravit název videa</DialogTitle>
+        <DialogContent>
+          <TextField
+            autoFocus
+            margin="dense"
+            label="Nový název"
+            type="text"
+            fullWidth
+            variant="outlined"
+            value={newName}
+            onChange={(e) => setNewName(e.target.value)}
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setEditDialog({ open: false, video: null })}>Zrušit</Button>
+          <Button onClick={handleEditSave} variant="contained">Uložit</Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Video Management Drawer */}
       <Drawer
         anchor="right"
         open={drawerOpen}
         onClose={handleCloseDrawer}
-        PaperProps={{ sx: { width: 480, maxWidth: '100vw', p: 0 } }}
+        PaperProps={{
+          sx: { width: 500 },
+        }}
       >
         {selectedVideo && (
-          <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
-            <Box sx={{ display: 'flex', alignItems: 'center', p: 2, borderBottom: '1px solid #eee' }}>
-              <Avatar src={selectedVideo.thumbnail} sx={{ width: 48, height: 48, mr: 2 }} />
-              <Box sx={{ flex: 1 }}>
-                <Typography fontWeight={600} fontSize={20}>{selectedVideo.name}</Typography>
-                <Typography variant="body2" color="text.secondary">Last modified an hour ago</Typography>
-              </Box>
+          <Box sx={{ p: 3 }}>
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+              <Typography variant="h6">Správa videa: {selectedVideo.title}</Typography>
               <IconButton onClick={handleCloseDrawer}>
                 <CloseIcon />
               </IconButton>
             </Box>
-            <Tabs value={drawerTab} onChange={(_, v) => setDrawerTab(v)} sx={{ px: 2, pt: 1 }}>
-              <Tab label="Link Video to Page" />
-              <Tooltip title="Ve vývoji" arrow placement="top">
-                <span>
-                  <Tab label="Add Interaction" disabled sx={{ color: '#bdbdbd' }} />
-                </span>
-              </Tooltip>
+            <Tabs value={linkingMethod} onChange={(event, newValue) => {
+              setLinkingMethod(newValue);
+              setCreatePageError('');
+              setNewPageName('');
+              setNewPageUrl('');
+              setPageUrl('');
+              setPageSearchResults([]);
+            }} sx={{ mb: 2 }}>
+              <Tab value="existing" label="Propojit s existující stránkou" />
+              <Tab value="new" label="Vytvořit novou stránku" />
             </Tabs>
-            <Divider />
-            {/* Obsah první záložky */}
-            {drawerTab === 0 && (
-              <Box sx={{ p: 3, display: 'flex', gap: 3, flexDirection: 'column' }}>
-                <Box sx={{ display: 'flex', gap: 3 }}>
-                  <Box sx={{ flex: 1 }}>
-                    <Typography fontWeight={600} sx={{ mb: 1 }}>Link Video to New Page</Typography>
-                    <Box sx={{ position: 'relative', mb: 3 }}>
-                      <TextField
-                        placeholder="Enter Page URL"
-                        size="small"
-                        fullWidth
-                        value={pageUrl}
-                        onChange={handlePageUrlChange}
-                        autoComplete="off"
-                      />
-                      {pageUrl && (
-                        <Paper sx={{ position: 'absolute', left: 0, right: 0, zIndex: 10, mt: 0.5, maxHeight: 180, overflowY: 'auto' }}>
-                          {pageSearchResults.length === 0 ? (
-                            <>
-                              <Box sx={{ px: 2, py: 1, color: 'text.secondary' }}>No page found for input URL</Box>
-                              <Button fullWidth onClick={handleCreatePage} sx={{ justifyContent: 'flex-start', pl: 2 }} disabled={!!createPageError || !pageUrl.trim()}>
-                                + Create page
-                              </Button>
-                              {createPageError && (
-                                <Box sx={{ color: 'error.main', px: 2, py: 0.5, fontSize: 13 }}>{createPageError}</Box>
+
+            {linkingMethod === 'new' && (
+              <Box sx={{ display: 'flex', gap: 3, flexDirection: 'column', mb: 3 }}>
+                <Typography fontWeight={600} sx={{ mb: 1 }}>Vytvořit a propojit novou stránku</Typography>
+                <TextField
+                  label="Název stránky"
+                  variant="outlined"
+                  fullWidth
+                  value={newPageName}
+                  onChange={(e) => setNewPageName(e.target.value)}
+                  sx={{ mb: 1 }}
+                />
+                <TextField
+                  label="URL stránky"
+                  variant="outlined"
+                  fullWidth
+                  value={newPageUrl}
+                  onChange={(e) => {
+                    setNewPageUrl(e.target.value);
+                    setCreatePageError('');
+                  }}
+                  error={!!createPageError}
+                  helperText={createPageError}
+                  sx={{ mb: 2 }}
+                />
+                <Button
+                  variant="contained"
+                  onClick={handleCreatePage}
+                  startIcon={<CheckIcon />}
+                  fullWidth
+                  disabled={!newPageName.trim() || !newPageUrl.trim()}
+                >
+                  Vytvořit a propojit stránku
+                </Button>
+              </Box>
+            )}
+
+            {linkingMethod === 'existing' && (
+              <Box sx={{ display: 'flex', gap: 3, flexDirection: 'column', mb: 3 }}>
+                <Typography fontWeight={600} sx={{ mb: 1 }}>Propojit video s existující stránkou</Typography>
+                <TextField
+                  label="Hledat existující stránky"
+                  variant="outlined"
+                  fullWidth
+                  value={pageUrl}
+                  onChange={handlePageSearchChange}
+                  sx={{ mb: 2 }}
+                  InputProps={{
+                    startAdornment: (
+                      <InputAdornment position="start">
+                        <SearchIcon />
+                      </InputAdornment>
+                    ),
+                  }}
+                />
+                <Paper elevation={1} sx={{ maxHeight: 200, overflow: 'auto', mb: 2 }}>
+                  {pageSearchResults.length > 0 ? (
+                    <Table size="small">
+                      <TableBody>
+                        {pageSearchResults.map((page) => (
+                          <TableRow key={page.id} hover onClick={() => handleSelectPage(page)} sx={{ cursor: 'pointer' }}>
+                            <TableCell>{page.name || page.url}</TableCell>
+                            <TableCell align="right">
+                              {pendingConnectedPages.some(p => p.id === page.id) ? (
+                                <CheckIcon color="success" />
+                              ) : (
+                                <ArrowDropDownIcon color="action" />
                               )}
-                            </>
-                          ) : (
-                            pageSearchResults.map(page => (
-                              <Button key={page.id} fullWidth onClick={() => handleSelectPage(page)} sx={{ justifyContent: 'flex-start', pl: 2 }}>
-                                {page.name} ({page.url})
-                              </Button>
-                            ))
-                          )}
-                        </Paper>
-                      )}
-                    </Box>
-                    <Typography fontWeight={600} sx={{ mb: 1 }}>Connected Pages</Typography>
-                    <Box sx={{ border: '1px solid #eee', borderRadius: 2, overflow: 'hidden' }}>
-                      <Box sx={{ display: 'flex', alignItems: 'center', px: 2, py: 1, bgcolor: '#fafbfc', borderBottom: '1px solid #eee' }}>
-                        <Typography variant="caption" sx={{ flex: 1, fontWeight: 700 }}>LINKED TO</Typography>
-                        <Typography variant="caption" sx={{ fontWeight: 700 }}>ACTION</Typography>
-                      </Box>
-                      {pendingConnectedPages.map((page, idx) => (
-                        <Box key={idx} sx={{ display: 'flex', alignItems: 'center', px: 2, py: 1, borderBottom: idx === pendingConnectedPages.length - 1 ? 'none' : '1px solid #eee' }}>
-                          <Box sx={{ flex: 1 }}>
-                            <Typography fontWeight={500}>{page.name}</Typography>
-                            <Typography variant="body2" color="primary.main" sx={{ fontSize: 13 }}>
-                              <a href={page.url} target="_blank" rel="noopener noreferrer" style={{ color: 'inherit', textDecoration: 'none' }}>{page.url}</a>
-                            </Typography>
-                          </Box>
-                          <IconButton color="error" size="small">
-                            <DeleteIcon fontSize="small" />
-                          </IconButton>
-                        </Box>
-                      ))}
-                    </Box>
-                    <Button color="error" size="small" sx={{ mt: 1, textTransform: 'none' }}>Remove All</Button>
-                  </Box>
-                  <Box>
-                    <Paper elevation={1} sx={{ width: 180, height: 240, borderRadius: 2, overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                      <img src={selectedVideo.thumbnail} alt="video" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                    </Paper>
-                  </Box>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  ) : (
+                    <Typography variant="body2" color="textSecondary" sx={{ p: 2 }}>
+                      Žádné výsledky.
+                    </Typography>
+                  )}
+                </Paper>
+                <Divider />
+                <Typography fontWeight={600} sx={{ mb: 1 }}>Aktuálně propojené stránky</Typography>
+                <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
+                  {pendingConnectedPages.length > 0 ? (
+                    pendingConnectedPages.map((page) => (
+                      <Chip
+                        key={page.id}
+                        label={page.name || page.url}
+                        onDelete={() => handleRemovePendingPage(page.id)}
+                        avatar={<Avatar>P</Avatar>}
+                      />
+                    ))
+                  ) : (
+                    <Typography variant="body2" color="textSecondary">Žádné stránky nejsou propojeny.</Typography>
+                  )}
                 </Box>
-                <Box sx={{ display: 'flex', justifyContent: 'flex-end', mt: 2 }}>
-                  <Button variant="contained" onClick={handleSave} sx={{ borderRadius: 2, textTransform: 'none' }}>Uložit</Button>
+                <Box sx={{ mt: 2, display: 'flex', justifyContent: 'flex-end' }}>
+                  <Button
+                    variant="contained"
+                    color="primary"
+                    onClick={handleSave}
+                    disabled={!selectedVideo}
+                  >
+                    Uložit propojení
+                  </Button>
                 </Box>
               </Box>
             )}
@@ -470,4 +667,4 @@ function Videos() {
   );
 }
 
-export default Videos; 
+export default Videos;
