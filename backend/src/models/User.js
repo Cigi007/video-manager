@@ -1,16 +1,16 @@
 import { DataTypes } from 'sequelize';
 import sequelize from '../config/database.js';
-import bcrypt from 'bcryptjs';
+import argon2 from 'argon2';
 
 const User = sequelize.define('User', {
   id: {
-    type: DataTypes.UUID,
-    defaultValue: DataTypes.UUIDV4,
+    type: DataTypes.STRING,
     primaryKey: true,
+    allowNull: false,
   },
   email: {
     type: DataTypes.STRING,
-    allowNull: false,
+    allowNull: true,
     unique: true,
     validate: {
       isEmail: true,
@@ -18,7 +18,7 @@ const User = sequelize.define('User', {
   },
   password: {
     type: DataTypes.STRING,
-    allowNull: false,
+    allowNull: true,
   },
   role: {
     type: DataTypes.ENUM('admin', 'user'),
@@ -26,11 +26,11 @@ const User = sequelize.define('User', {
   },
   firstName: {
     type: DataTypes.STRING,
-    allowNull: false,
+    allowNull: true,
   },
   lastName: {
     type: DataTypes.STRING,
-    allowNull: false,
+    allowNull: true,
   },
   isActive: {
     type: DataTypes.BOOLEAN,
@@ -40,21 +40,20 @@ const User = sequelize.define('User', {
   hooks: {
     beforeCreate: async (user) => {
       if (user.password) {
-        const salt = await bcrypt.genSalt(10);
-        user.password = await bcrypt.hash(user.password, salt);
+        user.password = await argon2.hash(user.password);
       }
     },
     beforeUpdate: async (user) => {
-      if (user.changed('password')) {
-        const salt = await bcrypt.genSalt(10);
-        user.password = await bcrypt.hash(user.password, salt);
+      if (user.changed('password') && user.password) {
+        user.password = await argon2.hash(user.password);
       }
     },
   },
 });
 
 User.prototype.validatePassword = async function(password) {
-  return bcrypt.compare(password, this.password);
+  if (!this.password) return false;
+  return argon2.verify(this.password, password);
 };
 
 export default User; 

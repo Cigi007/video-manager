@@ -1,7 +1,7 @@
 import express from 'express';
 import multer from 'multer';
 import path from 'path';
-import { getVideos, uploadVideos, renameVideo, deleteVideo } from '../controllers/videoController.js';
+import { getVideos, uploadVideos, updateVideo, deleteVideo } from '../controllers/videoController.js';
 import { auth } from '../middleware/auth.js';
 
 const router = express.Router();
@@ -20,7 +20,7 @@ const upload = multer({ storage });
 
 router.get('/', auth, getVideos);
 router.post('/', auth, upload.array('videos'), uploadVideos);
-router.patch('/:id', auth, renameVideo);
+router.patch('/:id', auth, updateVideo);
 router.delete('/:id', auth, deleteVideo);
 
 export default router; 
